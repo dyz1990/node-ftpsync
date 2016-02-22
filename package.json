@@ -1,0 +1,14 @@
+{
+  "name": "ftpsync",
+  "description":"syncronize files to server using ftp. 通过ftp同步文件到服务器",
+  "dependencies": {
+    "anymatch": "^1.3.0",
+    "chokidar": "1.4.x",
+    "ftp": "*"
+  },
+  "main": "ftpsync.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "version": "0.1.0"
+}
