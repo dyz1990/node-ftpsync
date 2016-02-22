@@ -56,14 +56,21 @@ edit config.json
 ```cmd
 node index.js
 ```
-如果配置中所有工作work配置的autoUpload=true，那就不用管了。
-输入 workName.changes() 查看所有修改且还没上传的文件
-输入 workName.upload() 同步上面列出来的文件到服务器
-输入 workName.close() 关闭工作的ftp
-输入 closeAll() 关闭所有工作
+  <br>
+  如果配置中所有工作work配置的autoUpload=true，那就不用管了。<br>
+  
+### 常用命令
+  输入 workName.changes() 查看所有修改且还没上传的文件<br>
+  输入 workName.upload() 同步上面列出来的文件到服务器<br>
+  输入 workName.close() 关闭工作的ftp<br>
+  输入 closeAll() 关闭所有工作<br>
+### 更多命令
+  源文件很简单，建议看看源文件ftpsync.js获得其它命令<br>
+  如果有需要，也可以自己添加一些命令。<br>
+  输入的命令其实就是调用ftpsync对象的成员<br>
 
 ##Required
-[chokidar](https://github.com/paulmillr/chokidar)监听文件的更改
-[ftp](https://github.com/mscdex/node-ftp) FTP客户端
-[anymatch](https://github.com/es128/anymatch) 路径配置
+[chokidar](https://github.com/paulmillr/chokidar)监听文件的更改<br>
+[ftp](https://github.com/mscdex/node-ftp) FTP客户端<br>
+[anymatch](https://github.com/es128/anymatch) 路径配置<br>
 
