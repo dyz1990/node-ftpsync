@@ -113,6 +113,7 @@ function FtpWork(ftpsync,config){
 	}
 	
 	this.$tasks=[];
+	this.$uploadChain=[];
 	this.start(config);//开始文件监听
 }
 FtpWork.prototype.toString=function(){
@@ -158,7 +159,7 @@ FtpWork.prototype.start=function(config){
 }
 FtpWork.prototype.setUpClient=function(){
 	if(!this.client){
-		this.client=new Client();	
+		var client=this.client=new Client();	
 		var self=this;
 		this.client.on("greeting",function(msg){
 			self.state="greeting";
@@ -167,22 +168,24 @@ FtpWork.prototype.setUpClient=function(){
 		this.client.on("ready",function(){
 			self.state="ready";			
 			ftpSync.log(self.name,"ftp ready");
-			this.mkdir(self.serverPath,function(err){
+			client.mkdir(self.serverPath,function(err){
 				if(err)
 					ftpSync.log("create serverPath:"+self.serverPath,err);
+			
+				client.cwd(self.serverPath,function(err,dir){
+					if(err){
+						ftpSync.log(self.name,'cwd',dir,'error',err);
+						self.close();
+						return;
+					}
+					ftpSync.log(self.name,"sync",self.clientPath,"to",dir);
+					while(self.$tasks.length>0){
+						var task=self.$tasks.pop();
+						task[0].apply(self,task[1]);
+					}
+				});
 			});
-			this.cwd(self.serverPath,function(err,dir){
-				if(err){
-					ftpSync.log(self.name,'cwd',dir,'error',err);
-					self.close();
-					return;
-				}
-				ftpSync.log(self.name,"sync",self.clientPath,"to",dir);
-			});
-			while(self.$tasks.length>0){
-				var task=self.$tasks.pop();
-				task[0].apply(self,task[1]);
-			}
+			
 		});
 		this.client.on('error',function(err){
 			if(self.state=='greeting'){
@@ -280,7 +283,8 @@ FtpWork.prototype.clear=function(){
 
 */
 FtpWork.prototype.upload=function(path,event){
-	if(this.checkReady(this.upload,[path,event])){
+	var args=arguments.length==0?[]:[path,event];
+	if(this.checkReady(this.upload,args)){
 		
 		if(arguments.length==0){
 			for(var p in this.$changedFiles){
@@ -288,11 +292,32 @@ FtpWork.prototype.upload=function(path,event){
 				this._upload(p,event);				
 			}			
 		} else {
+
 			this._upload(path,event);	
 		}
+		this.$failedChain=this.$failedChain||[];
+		this._doNextChain();
 	}
 }
+
 FtpWork.prototype._upload=function(path,event){
+	this.$uploadChain.push({path:path,event:event,trycount:0});
+}
+
+FtpWork.prototype._doNextChain=function(){
+	var chain=this.$uploadChain.shift();
+	if(!chain){
+		this.onAllUploadComplete&&this.onAllUploadComplete();
+		return true;
+	}
+	if(chain.trycount>3){
+		this.$failedChain.push(chain);
+		this._doNextChain();
+	}
+	console.log("do uppload:",chain);
+	var path=chain.path;
+	var event=chain.event;
+
 	var client=this.client;
 	var comp=this.useCompress;
 	var self=this; 
@@ -307,65 +332,96 @@ FtpWork.prototype._upload=function(path,event){
 		client.cwd(remoteDir,function(err){
 			if(err){
 				ftpSync.log("cwd",remoteDir,"error",err);
-			}else	client.put(localPath,
-				remoteName,
-				comp,
-				function(err){
-					if(err)ftpSync.log("put",path,"error",err)
-					else {
-						ftpSync.log('put',path,"success");
-						self.$changedFiles[path]&&delete self.$changedFiles[path];
-					}
+				if(err.indexOf('directory not found')){
+					//父目录不存在，放到链尾再试三次，
+					chain.trycount++;
+					self.$uploadChain.pop(chain);
+					self._doNextChain();	
 				}
-			);
-
+			}else｛
+				client.put(localPath,
+					remoteName,
+					comp,
+					function(err){
+						if(err){
+							ftpSync.log("put",path,"error",err)
+							self.$failedChain.push(chain);
+						} else {
+							ftpSync.log('put',path,"success");
+							self.$changedFiles[path]&&delete self.$changedFiles[path];
+						}
+						self._doNextChain();
+					}
+				);
+			｝
 		});
 		break;
 		case 'addDir':
 		client.mkdir(remotePath,
 			true,
 			function(err){
-				if(err)
+				if(err){
 					ftpSync.log("mkdir",path,"error",err);
+					self.$failedChain.push(chain);
+				}
 				else{
 					ftpSync.log("mkdir",path,"success");
 					self.$changedFiles[path]&&delete self.$changedFiles[path];
 				}
+				self._doNextChain();
 		});
 		break;
 		case "unlink":
 		client.delete(remotePath,
 			function(err){
-				if(err)
+				if(err){
 					ftpSync.log("remove",path,"error",err);
+					self.$failedChain.push(chain);
+				}
 				else {
 					self.$changedFiles[path]&&delete self.$changedFiles[path];
 					ftpSync.log("remove",path,"success");
 				}
+				self._doNextChain();
 		});
 		break;
 		case "unlinkDir":
 		client.rmdir(remotePath,
 			true,
 			function(err){
-				if(err)
+				if(err){
 					ftpSync.log("remove",path,"error",err);
+					self.$failedChain.push(chain);
+				}
 				else {
 					self.$changedFiles[path]&&delete self.$changedFiles[path];
 					ftpSync.log("remove",path,"success");
 				}
+				self._doNextChain();
 
 		});
 		break;
+		default:
+			self._doNextChain();
+			break;
 	}
+	return false;
+}
+
+FtpWork.prototype.onAllUploadComplete=function(){
+	ftpSync.log("All upload complete");
+	console.log("faild count",this.$failedChain.length);
+
+	this.$failedChain=[];
 }
 
 FtpWork.prototype.download=function(path){
-	
+	//
+	ftpSync.log("unimplemented");
 }
 
 FtpWork.prototype._download=function(){
-
+	ftpSync.log("unimplemented");
 }
 
 
