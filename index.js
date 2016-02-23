@@ -1,4 +1,5 @@
 var readline=require('readline');
+var vm=require('vm');
 var rl=readline.createInterface({
 	input:process.stdin,
 	output:process.stdout,
@@ -20,7 +21,8 @@ rl.on("line",function(line){
 		try{		
 			with(ftpSync){
 				result=eval(line);
-			}	
+			}
+			
 			if(typeof result!=='undefined')	
 			console.log(result);
 			

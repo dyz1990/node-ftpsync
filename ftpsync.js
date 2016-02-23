@@ -82,8 +82,28 @@ FtpSync.prototype.worksName=function(){
 	return names;
 }
 
-FtpSync.prototype.current=function(){
-	return this.$currentWork;
+FtpSync.prototype.changes=function(raw){
+	
+	var works=this.$works;
+	
+	if(raw){
+		var result={};
+		for(var i=0,n=works.length;i<n;i++){
+			result[works[i].name]=works[i].$changedFiles;
+		}
+		return result;
+	} else {
+		for(var i=0,n=works.length;i<n;i++){
+			works[i].changes();
+		}
+	}
+}
+
+FtpSync.prototype.upload=function(){
+	var works=this.$works;
+	for(var i=0,n=works.length;i<n;i++){
+		works[i].upload();
+	}
 }
 
 function FtpWork(ftpsync,config){
@@ -163,7 +183,7 @@ FtpWork.prototype.setUpClient=function(){
 		var self=this;
 		this.client.on("greeting",function(msg){
 			self.state="greeting";
-			ftpSync.log(self.name,"ftp greeting",msg);
+			console.log(self.name,"ftp greeting",msg);
 		});
 		this.client.on("ready",function(){
 			self.state="ready";			
@@ -221,7 +241,6 @@ FtpWork.prototype.connect=function(){
 	if(this.state=='ready'||this.state=='greeting'){
 		return;
 	}
-	ftpSync.log(this.name+" is connecting",this.config);
 	this.client.connect(this.config);
 }
 /**
@@ -245,36 +264,59 @@ FtpWork.prototype.close=function(){
 	fs.writeFileSync(".works/"+this.name+".json",changes);
 }
 
-FtpWork.prototype.listServer=function(path,useCompress){
+FtpWork.prototype.listServer=function(path,useCompress,callback){
 	if(this.checkReady(this.listServer,[path,useCompress])){		
 		var self=this;
 		var lpath=this.serverPath+"/"+(path||'');
-		this.client.list(lpath,useCompress,function(err,list){
+		this.client.list(lpath,useCompress,callback||function(err,list){
+
 			if(err){
 				ftpSync.error(self.name+".list error:",err);
 				return;
 			}
-			ftpSync.log("server list",lpath,":");
-
+			var result=[];
 			for(var i=0,n=list.length;i<n;i++){
 				var fn=list[i];
-				ftpSync.log(fn.type,'\t',
-					//fn.rights.user,'\t',fn.rights.group,'\t',fn.rights.other,'\t',
-					fn.size,'\t',fn.name,'\t',					
+				result.push(" "+fn.type+'\t'+
+					fn.size+'\t'+fn.name+'\t'+					
 					fn.date.format("yyyy-MM-dd hh:mm:ss.S"));
 			}
+			console.log("server list",lpath,":");
+			ftpSync.log(result.join("\n"))
 		});
 	}
 }
-FtpWork.prototype.listLocal=function(path){
+FtpWork.prototype.listLocal=function(path,callback){
 	var lpath=this.clientPath+"/"+(path||'');
-
-
+	files = fs.readdir(lpath,callback||function(err,files){
+		if(err){
+			ftpSync.log(err);
+			return ;
+		}
+		var fileList=[];
+	 	files.forEach(function (file) {
+			var info="";
+			states = fs.statSync(lpath+'/'+file); 
+			if(states.isDirectory()){
+				info+="d\t";
+			} else { 
+				info+="-\t";
+			}  
+			info+=states.size+"\t"+file+"\t"+states.mtime.format("yyyy-MM-dd hh:mm:ss.S");
+			fileList.push(info);
+	 	});
+	 	ftpSync.log(lpath+":\n"+fileList.join("\n"));
+	});	 
 }
-FtpWork.prototype.changes=function(){
+FtpWork.prototype.changes=function(raw){
 	var changes=JSON.stringify(this.$changedFiles);
 	fs.writeFileSync(".works/"+this.name+".json",changes);
-	return changes;
+	for(var p in this.$changedFiles){
+		var event=this.$changedFiles[p];
+		console.log(this.name,":",event,p);
+	}	
+	if(raw)
+		return changes;
 }
 FtpWork.prototype.clear=function(){
 	return this.$changedFiles={};
@@ -409,8 +451,8 @@ FtpWork.prototype._doNextChain=function(){
 }
 
 FtpWork.prototype.onAllUploadComplete=function(){
-	ftpSync.log("All upload complete");
-	console.log("faild count",this.$failedChain.length);
+	ftpSync.log(this.name,":","All upload complete");
+	console.log(this.name,":","faild count",this.$failedChain.length);
 
 	this.$failedChain=[];
 }
