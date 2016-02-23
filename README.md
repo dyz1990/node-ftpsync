@@ -3,7 +3,9 @@ synchronize files to the server via FTP
 通过FTP同步文件到服务器
 
   在使用Zend studio修改项目时，Zs自带的文件上传功能老是卡死，<br>
-  于是自己用nodejs写了个自己上传项目中修改的文件到服务器
+  于是自己用nodejs写了个自己上传项目中修改的文件到服务器<br>
+
+
 
   原理是使用[chokidar](https://github.com/paulmillr/chokidar)监听文件的更改，<br>
   包括添加和删除文件/文件夹<br>
@@ -11,7 +13,11 @@ synchronize files to the server via FTP
 
 ##安装
   npm install ftp-sync-works
-  
+##works
+  由于经常需要多个项目同时修改更新，于是加入了works概念<br>
+  一个work对应一个项目，可以单独设置FTP连接参数，也可以使用默认的参数.<br>
+  每个work使用独立的FTP Client进行传输
+
 ##配置
 edit config.json
 ```json
