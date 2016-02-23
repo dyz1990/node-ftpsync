@@ -12,7 +12,18 @@ synchronize files to the server via FTP
   然后使用[ftp](https://github.com/mscdex/node-ftp)将文件上传到服务器
 
 ##安装
+```cmd
   npm install ftp-sync-works
+```
+
+##使用
+在ftp-sync-works目录中打开控制台，<br>
+```cmd
+node index.js
+```
+  <br>
+  如果配置中所有工作work配置的autoUpload=true，那就不用管了。<br>
+
 ##works
   由于经常需要多个项目同时修改更新，于是加入了works概念<br>
   一个work对应一个项目，可以单独设置FTP连接参数，也可以使用默认的参数.<br>
@@ -60,14 +71,6 @@ edit config.json
 }
 ```
 
-##使用
-在ftpsync目录中打开控制台，<br>
-```cmd
-node index.js
-```
-  <br>
-  如果配置中所有工作work配置的autoUpload=true，那就不用管了。<br>
-  
 ### 常用命令
   输入 workName.changes() 查看所有修改且还没上传的文件<br>
   输入 workName.upload() 同步上面列出来的文件到服务器<br>
