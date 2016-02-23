@@ -9,6 +9,9 @@ synchronize files to the server via FTP
   包括添加和删除文件/文件夹<br>
   然后使用[ftp](https://github.com/mscdex/node-ftp)将文件上传到服务器
 
+##安装
+  npm install ftp-sync-works
+  
 ##配置
 edit config.json
 ```json
