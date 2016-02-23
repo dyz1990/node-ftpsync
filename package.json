@@ -1,5 +1,5 @@
 {
-  "name": "ftp-sync",
+  "name": "ftp-sync-works",
   "description":"syncronize files to server using ftp. 通过ftp同步文件到服务器",
   "dependencies": {
     "anymatch": "^1.3.0",
