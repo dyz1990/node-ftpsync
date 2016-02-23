@@ -69,7 +69,7 @@ node index.js
   如果有需要，也可以自己添加一些命令。<br>
   输入的命令其实就是调用ftpsync对象的成员<br>
 
-##Required
+##依赖
 [chokidar](https://github.com/paulmillr/chokidar)监听文件的更改<br>
 [ftp](https://github.com/mscdex/node-ftp) FTP客户端<br>
 [anymatch](https://github.com/es128/anymatch) 路径配置<br>
