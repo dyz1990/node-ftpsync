@@ -338,7 +338,7 @@ FtpWork.prototype._doNextChain=function(){
 					self.$uploadChain.pop(chain);
 					self._doNextChain();	
 				}
-			}else｛
+			}else{
 				client.put(localPath,
 					remoteName,
 					comp,
@@ -353,7 +353,7 @@ FtpWork.prototype._doNextChain=function(){
 						self._doNextChain();
 					}
 				);
-			｝
+			}
 		});
 		break;
 		case 'addDir':
