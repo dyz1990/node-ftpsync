@@ -1,6 +1,5 @@
 {
-  "auth":"dyz1990",
-  "name": "ftpsync",
+  "name": "ftp-sync",
   "description":"syncronize files to server using ftp. 通过ftp同步文件到服务器",
   "dependencies": {
     "anymatch": "^1.3.0",
@@ -11,5 +10,15 @@
   "scripts": {
     "start": "node index.js"
   },
-  "version": "0.1.0"
+  "version": "0.0.2",
+  "author":"dyz1990",
+  "license":"GNU",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dyz1990/node-ftpsync.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dyz1990/node-ftpsync/issues"
+  },
+  "homepage":"https://github.com/dyz1990"
 }
