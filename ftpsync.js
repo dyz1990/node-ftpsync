@@ -3,6 +3,8 @@ var fs = require('fs');
 var chokidar = require('chokidar');
 var anymatch=require('anymatch');
 var pathUtil=require('path');
+var util = require("util");  
+var events = require("events"); 
 
 Date.prototype.format = function (fmt) { //author: meizz 
 	var o = {
@@ -35,11 +37,13 @@ function getFtpConfig(config){
 }
 
 function FtpSync(){
+	events.EventEmitter.call(this);  
 	this._config=null;
 	this.$works=[];
 	this.$currentWork=null;
 
 }
+util.inherits(FtpSync, events.EventEmitter);
 
 FtpSync.prototype.config=function(config){
 	if(arguments.length==0)return this._config;
@@ -54,13 +58,47 @@ FtpSync.prototype.config=function(config){
 			if(cfg.clientPath===undefined || cfg.serverPath===undefined||cfg.enabled===false){
 				continue;
 			}
-			var w=new FtpWork(this,cfg);
-			this.$works.push(w);
-			this[w.name]=w;
-			if(config.activeAll&&w.enabled!==false)
-				w.connect();
+			this.addWork(cfg,config.activeAll&&cfg.enabled!==false);
+			// var w=new FtpWork(this,cfg);
+			// this.$works.push(w);
+			// this[w.name]=w;
+			// if(config.activeAll&&w.enabled!==false)
+			// 	w.connect();
 		}
 
+	}
+}
+
+FtpSync.prototype.addWork=function(config,active){
+	if(!config.name){
+		throw "need config.name";		
+	}
+	if(config.clientPath===undefined || config.serverPath===undefined){
+		throw "need config.clientPath and config.serverPath";
+	}
+	if(this[config.name]){
+		throw "work named "+config.name+" already exists!";
+	}
+	var w=new FtpWork(this,config);
+	this.$works.push(w);
+	this[w.name]=w;
+	if(active)w.connect();
+}
+
+FtpSync.prototype.removeWork=function(name){
+	var w=this[name];
+	if(w){
+		delete this[name];
+		var index=-1;
+		for(var i=0,n=this.$works.length;i<n;i++){
+			if(this.$works[i]===w){
+				index=i;
+				break;
+			}
+		}
+		if(index>-1){
+			this.$works.splice(index,1);
+		}
 	}
 }
 
@@ -108,6 +146,7 @@ FtpSync.prototype.upload=function(){
 
 function FtpWork(ftpsync,config){
 	this.ftpSync=ftpsync;
+	this.enabled=config.enabled!==false;
 	this.clientPath=config.clientPath||"./";
 	this.serverPath=config.serverPath||"/";
 	this.autoUpload=config.autoUpload;
@@ -132,19 +171,23 @@ function FtpWork(ftpsync,config){
 		this.$changedFiles={};		
 	}
 	
-	this.$tasks=[];
-	this.$uploadChain=[];
+	this.$readyTasks=[];
+	this.$uploadSeries=[];
 	this.start(config);//开始文件监听
 }
 FtpWork.prototype.toString=function(){
-	return this.name+":"+this.state+"{"+this.config.host+":"+this.port+"}";
+	return this.name+":ftp"+"{state="+this.state+",host="+
+	this.config.host+":"+this.config.port+
+	",clientPath="+this.clientPath+",serverPath="+this.serverPath+"}";
 }
 //开始文件监听
 FtpWork.prototype.start=function(config){
 	if(this._fsWatcher)return;
+	config=config||{};
 	var self=this;
 	var hasWorkFile=fs.existsSync(this._workFile);
 	this._fsWatcher=chokidar.watch(this.clientPath,
+		///工作文件存在时强制忽略
 		{ignoreInitial:hasWorkFile||config.ignoreInitial});
 	this._fsWatcher.on(
 		"all",
@@ -168,6 +211,7 @@ FtpWork.prototype.start=function(config){
 
 			if(ignored)return;
 			ftpSync.log(self.name+" local file "+event,":",path);
+			self.ftpSync.emit("change",self,path,event);
 			var client=self.client;
 			var changedFile=self.$changedFiles;
 				changedFile[path]=event;
@@ -176,17 +220,21 @@ FtpWork.prototype.start=function(config){
 			}
 			
 	});
+
+	this.ftpSync.emit("start",this);
 }
-FtpWork.prototype.setUpClient=function(){
+FtpWork.prototype._setUpClient=function(){
 	if(!this.client){
 		var client=this.client=new Client();	
 		var self=this;
 		this.client.on("greeting",function(msg){
 			self.state="greeting";
+			self.ftpSync.emit("state",self);
 			console.log(self.name,"ftp greeting",msg);
 		});
 		this.client.on("ready",function(){
-			self.state="ready";			
+			self.state="ready";	
+			self.ftpSync.emit("state",self);		
 			ftpSync.log(self.name,"ftp ready");
 			client.mkdir(self.serverPath,function(err){
 				if(err)
@@ -199,8 +247,8 @@ FtpWork.prototype.setUpClient=function(){
 						return;
 					}
 					ftpSync.log(self.name,"sync",self.clientPath,"to",dir);
-					while(self.$tasks.length>0){
-						var task=self.$tasks.pop();
+					while(self.$readyTasks.length>0){
+						var task=self.$readyTasks.shift();
 						task[0].apply(self,task[1]);
 					}
 				});
@@ -210,25 +258,29 @@ FtpWork.prototype.setUpClient=function(){
 		this.client.on('error',function(err){
 			if(self.state=='greeting'){
 				self.state="error";
+				self.ftpSync.emit("state",self);
 			}
 			ftpSync.log(self.name,"ftp error",err)
 		});
 		this.client.on("close",function(hadErr){
 			self.state="close";
 			ftpSync.log(self.name,"ftp closed","hadErr:"+hadErr);
+			self.ftpSync.emit("state",self);
 		});
 		this.client.on("end",function(){
 			self.state="close"
 			ftpSync.log(self.name,"ftp ended")
+			self.ftpSync.emit("state",self);
 		});
 	}
 }
-FtpWork.prototype.checkReady=function(task,args){
+
+FtpWork.prototype.ensureReady=function(task,args){
 	if(this.state=='ready'){
 		return true;
 	}
 	if(typeof task==='function')
-		this.$tasks.push([task,args]);
+		this.$readyTasks.push([task,args]);
 	if(this.state!='greeting'&&this.state!=='ready')
 		this.connect();
 	return false;
@@ -237,10 +289,11 @@ FtpWork.prototype.checkReady=function(task,args){
  * 连接ftp
 **/
 FtpWork.prototype.connect=function(){
-	this.setUpClient();
+	this._setUpClient();
 	if(this.state=='ready'||this.state=='greeting'){
 		return;
 	}
+	this.ftpSync.emit("beforeConnect",this);
 	this.client.connect(this.config);
 }
 /**
@@ -249,6 +302,7 @@ FtpWork.prototype.connect=function(){
 FtpWork.prototype.stop=function(){
 	this._fsWatcher&&this._fsWatcher.close();
 	this._fsWatcher=null;
+	this.ftpSync.emit("stop",this);
 }
 /**
   *关闭ftp
@@ -265,7 +319,7 @@ FtpWork.prototype.close=function(){
 }
 
 FtpWork.prototype.listServer=function(path,useCompress,callback){
-	if(this.checkReady(this.listServer,[path,useCompress])){		
+	if(this.ensureReady(this.listServer,[path,useCompress,callback])){		
 		var self=this;
 		var lpath=this.serverPath+"/"+(path||'');
 		this.client.list(lpath,useCompress,callback||function(err,list){
@@ -326,7 +380,7 @@ FtpWork.prototype.clear=function(){
 */
 FtpWork.prototype.upload=function(path,event){
 	var args=arguments.length==0?[]:[path,event];
-	if(this.checkReady(this.upload,args)){
+	if(this.ensureReady(this.upload,args)){
 		
 		if(arguments.length==0){
 			for(var p in this.$changedFiles){
@@ -337,17 +391,18 @@ FtpWork.prototype.upload=function(path,event){
 
 			this._upload(path,event);	
 		}
+		if(this.$uploadSeries.length==0)return;
 		this.$failedChain=this.$failedChain||[];
 		this._doNextChain();
 	}
 }
 
 FtpWork.prototype._upload=function(path,event){
-	this.$uploadChain.push({path:path,event:event,trycount:0});
+	this.$uploadSeries.push({path:path,event:event,trycount:0});
 }
 
 FtpWork.prototype._doNextChain=function(){
-	var chain=this.$uploadChain.shift();
+	var chain=this.$uploadSeries.shift();
 	if(!chain){
 		this.onAllUploadComplete&&this.onAllUploadComplete();
 		return true;
@@ -377,7 +432,7 @@ FtpWork.prototype._doNextChain=function(){
 				if(err.indexOf('directory not found')){
 					//父目录不存在，放到链尾再试三次，
 					chain.trycount++;
-					self.$uploadChain.pop(chain);
+					self.$uploadSeries.pop(chain);
 					self._doNextChain();	
 				}
 			}else{
@@ -453,7 +508,7 @@ FtpWork.prototype._doNextChain=function(){
 FtpWork.prototype.onAllUploadComplete=function(){
 	ftpSync.log(this.name,":","All upload complete");
 	console.log(this.name,":","faild count",this.$failedChain.length);
-
+	this.ftpSync.emit("uploaded",this,this.$failedChain);
 	this.$failedChain=[];
 }
 

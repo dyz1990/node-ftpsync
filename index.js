@@ -22,9 +22,11 @@ rl.on("line",function(line){
 			with(ftpSync){
 				result=eval(line);
 			}
-			
-			if(typeof result!=='undefined')	
-			console.log(result);
+
+			if(typeof result==='object')	
+				console.log(result?result.toString():result);
+			else if(result!==undefined)
+				console.log(result);
 			
 		}catch(e){
 			console.trace(line,e);
