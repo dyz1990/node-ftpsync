@@ -308,9 +308,6 @@ FtpWork.prototype.stop=function(){
   *关闭ftp
  */
 FtpWork.prototype.close=function(){
-
-	this._fsWatcher.close();
-
 	if(this.client)
 		this.client.destroy();
 
@@ -392,8 +389,8 @@ FtpWork.prototype.upload=function(path,event){
 			this._upload(path,event);	
 		}
 		if(this.$uploadSeries.length==0)return;
-		this.$failedChain=this.$failedChain||[];
-		this._doNextChain();
+		this.$failedUpdate=this.$failedUpdate||[];
+		this._doNextUpload();
 	}
 }
 
@@ -401,19 +398,21 @@ FtpWork.prototype._upload=function(path,event){
 	this.$uploadSeries.push({path:path,event:event,trycount:0});
 }
 
-FtpWork.prototype._doNextChain=function(){
-	var chain=this.$uploadSeries.shift();
-	if(!chain){
+FtpWork.prototype._doNextUpload=function(){
+	var uploadData=this.$uploadSeries.shift();
+	if(!uploadData){
 		this.onAllUploadComplete&&this.onAllUploadComplete();
 		return true;
 	}
-	if(chain.trycount>3){
-		this.$failedChain.push(chain);
-		this._doNextChain();
+	uploadData.trycount++;
+	if(uploadData.trycount>3){
+		this.$failedUpdate.push(uploadData);
+		this._doNextUpload();
+		return;
 	}
-	console.log("do uppload:",chain);
-	var path=chain.path;
-	var event=chain.event;
+	console.log("do uppload:",uploadData);
+	var path=uploadData.path;
+	var event=uploadData.event;
 
 	var client=this.client;
 	var comp=this.useCompress;
@@ -431,9 +430,9 @@ FtpWork.prototype._doNextChain=function(){
 				ftpSync.log("cwd",remoteDir,"error",err);
 				if(err.indexOf('directory not found')){
 					//父目录不存在，放到链尾再试三次，
-					chain.trycount++;
-					self.$uploadSeries.pop(chain);
-					self._doNextChain();	
+					
+					self.$uploadSeries.pop(uploadData);
+					self._doNextUpload();	
 				}
 			}else{
 				client.put(localPath,
@@ -442,12 +441,12 @@ FtpWork.prototype._doNextChain=function(){
 					function(err){
 						if(err){
 							ftpSync.log("put",path,"error",err)
-							self.$failedChain.push(chain);
+							self.$failedUpdate.push(uploadData);
 						} else {
 							ftpSync.log('put',path,"success");
 							self.$changedFiles[path]&&delete self.$changedFiles[path];
 						}
-						self._doNextChain();
+						self._doNextUpload();
 					}
 				);
 			}
@@ -459,13 +458,13 @@ FtpWork.prototype._doNextChain=function(){
 			function(err){
 				if(err){
 					ftpSync.log("mkdir",path,"error",err);
-					self.$failedChain.push(chain);
+					self.$failedUpdate.push(uploadData);
 				}
 				else{
 					ftpSync.log("mkdir",path,"success");
 					self.$changedFiles[path]&&delete self.$changedFiles[path];
 				}
-				self._doNextChain();
+				self._doNextUpload();
 		});
 		break;
 		case "unlink":
@@ -473,13 +472,13 @@ FtpWork.prototype._doNextChain=function(){
 			function(err){
 				if(err){
 					ftpSync.log("remove",path,"error",err);
-					self.$failedChain.push(chain);
+					self.$failedUpdate.push(uploadData);
 				}
 				else {
 					self.$changedFiles[path]&&delete self.$changedFiles[path];
 					ftpSync.log("remove",path,"success");
 				}
-				self._doNextChain();
+				self._doNextUpload();
 		});
 		break;
 		case "unlinkDir":
@@ -488,18 +487,18 @@ FtpWork.prototype._doNextChain=function(){
 			function(err){
 				if(err){
 					ftpSync.log("remove",path,"error",err);
-					self.$failedChain.push(chain);
+					self.$failedUpdate.push(uploadData);
 				}
 				else {
 					self.$changedFiles[path]&&delete self.$changedFiles[path];
 					ftpSync.log("remove",path,"success");
 				}
-				self._doNextChain();
+				self._doNextUpload();
 
 		});
 		break;
 		default:
-			self._doNextChain();
+			self._doNextUpload();
 			break;
 	}
 	return false;
@@ -507,9 +506,9 @@ FtpWork.prototype._doNextChain=function(){
 
 FtpWork.prototype.onAllUploadComplete=function(){
 	ftpSync.log(this.name,":","All upload complete");
-	console.log(this.name,":","faild count",this.$failedChain.length);
-	this.ftpSync.emit("uploaded",this,this.$failedChain);
-	this.$failedChain=[];
+	console.log(this.name,":","faild count",this.$failedUpdate.length);
+	this.ftpSync.emit("uploaded",this,this.$failedUpdate);
+	this.$failedUpdate=[];
 }
 
 FtpWork.prototype.download=function(path){

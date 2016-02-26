@@ -1,10 +1,10 @@
 var readline=require('readline');
-var vm=require('vm');
+
 var rl=readline.createInterface({
 	input:process.stdin,
 	output:process.stdout,
 	completer:function(line){
-		var completions = works;
+		var completions = words;
 
         var hits = completions.filter(function(c) { return c.indexOf(line) == 0 })
         return [hits.length ? hits : completions, line]
@@ -45,7 +45,7 @@ rl.on('SIGINT', function() {
         }
     });
 });
- 
+
 rl.on('close', function() {
     process.exit(0);
 });
@@ -56,12 +56,13 @@ var ftpSync= require("./ftpsync.js");
 var config=fs.readFileSync("./config.json",'utf-8');
 if(config)
 	ftpSync.config(eval("("+config+")"));
-var works=ftpSync.worksName();
-works.push('upload');
-works.push('changes');
-works.push('closeAll');
-works.push('close');
-works.push('listServer');
+var words=ftpSync.worksName();
+words.push('upload');
+words.push('changes');
+words.push('closeAll');
+words.push('close');
+words.push('listServer');
+words.push('listLocal');
 ftpSync.log=ftpSync.error=function(){
 	var data=Array.prototype.slice.call(arguments,0).join(" ");
 	console.log(data);
