@@ -369,6 +369,21 @@ FtpWork.prototype.changes=function(raw){
 	if(raw)
 		return changes;
 }
+FtpWork.prototype.add=function(path){
+	var fullpath=this.clientPath+"/"+path;
+	var stat=fs.statSync(fullpath);
+	if(stat.isFile()){
+		this.$changedFiles[path]="change";
+	}else if(stat.isDirectory()){
+		this.$changedFiles[path]="addDir";
+		var files = fs.readdirSync(fullpath);
+		for(var i=0,n=files.length;i<n;i++){
+			var file=files[i];
+			if(file=='.'||file=='..')continue;
+			this.add(path+"/"+file);
+		}
+	}
+}
 FtpWork.prototype.clear=function(){
 	return this.$changedFiles={};
 }
@@ -430,7 +445,7 @@ FtpWork.prototype._doNextUpload=function(){
 				ftpSync.log("cwd",remoteDir,"error",err);
 				if(err.indexOf('directory not found')){
 					//父目录不存在，放到链尾再试三次，
-					
+					//self.$uploadSeries.pop(uploadData);
 					self.$uploadSeries.pop(uploadData);
 					self._doNextUpload();	
 				}
